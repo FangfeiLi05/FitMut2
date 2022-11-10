@@ -7,16 +7,16 @@
 
 ### 1. What is FitMut2?
 
-FitMut2 is an improved version of FitMut1. FitMut1 is a Python reimplementation version of the [Mathematica](https://www.wolfram.com/mathematica/) tool that developed for identifying adaptive mutations that established in barcoded evolution experiments, and inferring their mutational parameters (fitness effect and establishment time) (see more details of FitMut1 in reference: [S. F. Levy, et al. Quantitative evolutionary dynamics using high-resolution lineage tracking. Nature, 519(7542): 181-186 (2015)](https://www.nature.com/articles/nature14279). If you use this software, please reference: [bioRxiv](). FitMut2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+FitMut2 is an algorithm developed for identifying adaptive mutations that established in barcoded evolution experiments, and inferring their mutational parameters (fitness effect and establishment time). It is preceded by FitMut1, which was developed in [S. F. Levy, et al. Quantitative evolutionary dynamics using high-resolution lineage tracking. Nature, 519(7542): 181-186 (2015)](https://www.nature.com/articles/nature14279) and originally implemented in Mathematica. In this repository we have reimplemented FitMut1 in Python and additionally adapted it for higher accuracy in situations with lower sequencing coverage. If you use this software, please reference our [preprint](https://www.biorxiv.org/content/10.1101/2022.09.25.509409v1). FitMut2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 
-It currently has two main functions:
-* `fitmutsimu_run.py` simulates the entire experimental process of barcode-sequencing (bar-seq) evolution experiment. 
-* `fitmut2_run.py` identifies adaptive mutations (as well as inferring their fitness effects and establishment times) that established in bar-seq evolution experiments from read-count time series data.
+This repository has two main scripts (aside from the implementation of FitMut1):
+* `fitmutsimu_run.py` simulates the experimental process of a barcode-sequencing (bar-seq) evolution experiment. This can be used to test the inference algorithm on simulated data where the ground truth is known.
+* `fitmut2_run.py` identifies adaptive mutations (as well as inferring their fitness effects and establishment times) that established in bar-seq evolution experiments from read count time series data.
 
 A walk-through is included as the jupyter notebook [here](https://github.com/FangfeiLi05/FitMut2/blob/master/walk_through/walk_through.ipynb).
 
 
-### 2. How to install FitMut2?
+### 2. Installing FitMut2
 
 * Python 3 is required. This version has been tested on a MacBook Pro (Apple M1 Chip, 8 GB Memory), with Python 3.8.5.
 * Clone this repository by running `git clone https://github.com/FangfeiLi05/FitMut2.git` in terminal.
@@ -27,13 +27,13 @@ A walk-through is included as the jupyter notebook [here](https://github.com/Fan
 ### 3. How to use FitMut2?
 
 #### 3.1. Evolution Simulation
-`fitmutsimu_run.py` simulates the entire experimental process of barcode-sequencing (bar-seq) evolution experiment with serial dilution of a barcoded cell population. This simulation includes all sources of noise, including growth noise, noise from cell transfers, DNA extraction, PCR, and sequencing.
+`fitmutsimu_run.py` simulates the entire experimental process of barcode-sequencing (bar-seq) evolution experiment with serial dilution of a barcoded cell population. This simulation models all sources of noise, including growth noise, noise from cell transfers, DNA extraction, PCR, and sequencing, as Poisson randomness with the appropriate multiplicative factor.
 
 ##### Options
-* `--lineage_number` or `-l`: number of lineages
+* `--lineage_number` or `-l`: number of lineages to simulate. Each lineage begins the evolution experiment with an average size of 100 cells, where the spread is determined by variability in the pregrowth phase.
 * `--t_seq` or `-t`: a .csv file, with
-  + 1st column: sequenced time points evaluated in number of generations
-  + 2nd+ columns: average number of reads per barcode for each sequenced time point (accept multiple columns for multiple sequencing replicates)
+  + 1st column: sequenced time points measured in number of generations
+  + 2nd+ columns: average number of reads per barcode for each sequenced time point (accepts multiple columns for multiple sequencing replicates with e.g. variable coverage)
 * `--mutation_fitness` or `-s`: a .csv file, with
   + 1st column: total beneficial mutation rate, Ub
   + 2nd column: bin edges of the arbitrary DFE
@@ -61,7 +61,7 @@ A walk-through is included as the jupyter notebook [here](https://github.com/Fan
 python fitmutsimu_run.py --help
 ```
 
-##### Examples
+##### Example Use Case
 ```
 python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mutation_fitness.csv -o test
 ```    
@@ -88,8 +88,8 @@ python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mu
 * `output_MutSeq_Result.csv`: a .csv file, with
   + 1st column of .csv: estimated fitness effect of each lineage
   + 2nd column of .csv: estimated establishment time of each lineage
-  + 3rd column of .csv: theoretical estimation error for fitness effect
-  + 4th column of .csv: theoretical estimation error for establishment time
+  + 3rd column of .csv: uncertainty in fitness effect
+  + 4th column of .csv: uncertainty in establishment time
   + 5th column of .csv: probability of each lineage containing an adaptive mutation
   + 6th column of .csv: estimated mean fitness per sequenced time point
   + 7th column of .csv: estimated kappa per sequenced time point
@@ -103,7 +103,7 @@ python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mu
 python fitmut2_run.py --help
 ```  
 
-##### Examples
+##### Example Use Case
 ```
 python fitmut2_run.py -i simu_test_EvoSimulation_Read_Number.csv -t fitmut_input_time_points.csv -o test
 ```
