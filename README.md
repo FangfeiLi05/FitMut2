@@ -92,7 +92,7 @@ python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mu
   + 4th column of .csv: uncertainty in establishment time
   + 5th column of .csv: probability of each lineage containing an adaptive mutation
   + 6th column of .csv: estimated mean fitness per sequenced time point
-  + 7th column of .csv: estimated kappa per sequenced time point
+  + 7th column of .csv: estimated kappa (noise parameter, see preprint for definition) per sequenced time point
   + 8th column of .csv: estimated fraction of mutant cells of the population per sequenced time point
 * `output_Mean_fitness_Result.csv`: estimated mean fitness at each iteration
 * `output_Cell_Number_Mutant_Estimated.csv`: estimated effective number of mutant cells per barcode for each time point
