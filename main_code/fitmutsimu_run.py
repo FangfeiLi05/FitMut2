@@ -2,10 +2,10 @@
 import numpy as np
 import pandas as pd
 import argparse
-import fitmutsimu_methods_v1
+import fitmutsimu_methods
 
 # try running with command 
-#python fitmutsimu_methods_v1.py -l 100000 -t simu_input_time_points.csv -s simu_input_mutation_fitness.csv -o test
+#python fitmutsimu_methods.py -l 100000 -t simu_input_time_points.csv -s simu_input_mutation_fitness.csv -o test
 
 
 ###########################
@@ -74,7 +74,7 @@ dna_copies = args.dna_copies
 pcr_cycles = args.pcr_cycles
 output_filename = args.output_filename
 
-my_obj = fitmutsimu_methods_v1.FitMutSimu(lineages_num = lineages_num,
+my_obj = fitmutsimu_methods.FitMutSimu(lineages_num = lineages_num,
                                           t_pregrowth = t_pregrowth,
                                           t_seq = t_seq,
                                           read_num_average_seq_bundle = read_num_average_seq_bundle,
