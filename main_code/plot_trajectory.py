@@ -15,7 +15,7 @@ import argparse
 def main():
     """
     ----------------------------------------------------------------------------
-    PLOT LINEAGE TRAJECTOTRIES
+    PLOT LINEAGE TRAJECTORIES
     ----------------------------------------------------------------------------
     """
     parser = argparse.ArgumentParser(description='Plot lineage trjectories', 

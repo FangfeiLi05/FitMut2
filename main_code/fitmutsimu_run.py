@@ -14,7 +14,7 @@ import fitmutsimu_methods
 
 parser = argparse.ArgumentParser(description = 'Simulated evolution of a isogentic population', formatter_class = argparse.ArgumentDefaultsHelpFormatter)
         
-parser.add_argument('-l', '--linegaes_number', type=int, required=True,
+parser.add_argument('-l', '--lineage_number', type=int, required=True,
                     help = 'number of lineages started as transformation')
 
 parser.add_argument('-t', '--t_seq', type=str, required=True,
@@ -53,7 +53,7 @@ args = parser.parse_args()
 
 
 ##########
-lineages_num = args.linegaes_number
+lineages_num = args.lineage_number
 t_pregrowth = args.t_pregrowth
     
 csv_input = pd.read_csv(args.t_seq, header=None)
