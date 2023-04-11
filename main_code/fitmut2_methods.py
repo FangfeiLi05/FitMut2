@@ -164,12 +164,12 @@ class FitMut:
     
 
     ##########
-    def function_establishment_size_scaler(self, s, tau):
+    def function_establishment_size_scalar(self, s, tau):
         """
         Calculate establishment size of a mutation with fitness effect s and establishment time tau.
-        Inputs: s (scaler)
-                tau (scaler)
-        Output: established_size (scaler)
+        Inputs: s (scalar)
+                tau (scalar)
+        Output: established_size (scalar)
         """
         x_mean_tau = np.interp(tau, self.t_seq_extend, self.x_mean_seq_extend)
         established_size = self.noise_c / np.maximum(s - x_mean_tau, 0.005)
@@ -200,11 +200,11 @@ class FitMut:
 
   
     ##########
-    def function_cell_num_theory_scaler(self, s, tau):
+    def function_cell_num_theory_scalar(self, s, tau):
         """
         Estimate cell number & mutant cell number all time points for a lineage given s and tau. 
-        Inputs: s (scaler)
-                tau (scaler)  
+        Inputs: s (scalar)
+                tau (scalar)  
         Output: {'cell_number': (array, vector), 
                  'mutant_cell_number': (array, vector)}
         """            
@@ -215,7 +215,7 @@ class FitMut:
         mutant_cell_num_seq_lineage_theory = np.zeros(self.seq_num, dtype=float)
         unmutant_cell_num_seq_lineage_theory = np.zeros(self.seq_num, dtype=float)
         
-        established_size = self.function_establishment_size_scaler(s, tau)
+        established_size = self.function_establishment_size_scalar(s, tau)
         sum_term_extend_tau = np.interp(tau, self.t_seq_extend, self.sum_term_extend)
         
         for k in range(self.seq_num):
@@ -293,14 +293,14 @@ class FitMut:
 
 
     ##########
-    def function_prior_loglikelihood_scaler(self, s, tau):
+    def prior_loglikelihood_scalar(self, s, tau):
         """
         Calculate log-likelihood value of a lineage given s and tau.
-        Inputs: s(scaler)
-                tau (scaler) 
-        Output: log-likelihood value of all time poins (scaler)
+        Inputs: s(scalar)
+                tau (scalar) 
+        Output: log-likelihood value of all time points (scalar)
         """        
-        output = self.function_cell_num_theory_scaler(s, tau)
+        output = self.function_cell_num_theory_scalar(s, tau)
         cell_num_seq_lineage_theory = output['cell_number']
         read_num_seq_lineage_theory = np.multiply(cell_num_seq_lineage_theory, self.ratio)
         read_num_seq_lineage_theory[read_num_seq_lineage_theory < 1] = 1
@@ -322,11 +322,9 @@ class FitMut:
 
         return log_likelihood_lineage
         
-     
-    
     
     ##########
-    def function_prior_loglikelihood_array(self, s_array, tau_array):
+    def prior_loglikelihood_array(self, s_array, tau_array):
         """
         Calculate log-likelihood value of a lineage given s and tau.
         Inputs: s_array (array, vector)
@@ -361,64 +359,58 @@ class FitMut:
 
 
     ##########
-    def function_posterior_loglikelihood_scaler(self, s, tau):
+    def posterior_loglikelihood_scalar(self, s, tau):
         """
         Calculate posterior log-likelihood value of a lineage given s and tau.
-        Inputs: s (scaler)
-                tau (scaler) 
-        Output: log-likelihood value of all time poins (scaler)
+        Inputs: s (scalar)
+                tau (scalar) 
+        Output: log-likelihood value of all time poins (scalar)
         """
         mu_s_mean = 0.1
         f_s_tau_joint_log = np.log(self.Ub) - np.log(mu_s_mean) - s/mu_s_mean + np.log(s/self.noise_c * self.cell_num_seq_lineage[0])  #exponential (Mathematica)
         #f_s_tau_joint_log =  np.log(self.Ub) + np.log(4*s/mu_s_mean**2) - 2*s/mu_s_mean + np.log(s * self.cell_num_seq_lineage[0])  #erlang prior:
         #f_s_tau_joint_log =  np.log(self.Ub)  - np.log(2*mu_s_mean) + np.log(s * self.cell_num_seq_lineage[0])  #uniform prior
         
-        output = self.function_prior_loglikelihood_scaler(s, tau) + f_s_tau_joint_log
-        #output = self.function_prior_loglikelihood_approximate_scaler(s, tau) + f_s_tau_joint_log
+        output = self.prior_loglikelihood_scalar(s, tau) + f_s_tau_joint_log
         
         return output
 
     
     
     ##########
-    def function_posterior_loglikelihood_array(self, s_array, tau_array):
+    def posterior_loglikelihood_array(self, s_array, tau_array):
         """
         Calculate posterior log-likelihood value of a lineage given s and tau.
         Inputs: s_array (array, vector)
                 tau_array (array, vector)
-        Output: log-likelihood value of all time poins (array, 2D matrix)
+        Output: log-likelihood value of all time points (array, 2D matrix)
         """
         tau_len = len(tau_array)
 
         joint_tmp5 = np.tile(np.log(s_array/self.noise_c  * self.cell_num_seq_lineage[0]), (tau_len, 1))
         joint_tmp6 = np.transpose(joint_tmp5, (1,0))
-        
         f_s_tau_joint_log = self.f_s_tau_joint_log_part + joint_tmp6  #exponential (Mathematica)
-
-        output = self.function_prior_loglikelihood_array(s_array, tau_array) + f_s_tau_joint_log
-        #output = self.function_prior_loglikelihood_approximate_array(s_array, tau_array) + f_s_tau_joint_log
+        output = self.prior_loglikelihood_array(s_array, tau_array) + f_s_tau_joint_log
 
         return output
 
-
-    
 
     ##########
-    def function_logprobabilityratio_adaptive_intergral(self, s_array, tau_array):
+    def log_ratio_adaptive_integral(self, s_array, tau_array):
         """
-        probabilities of a lineage being adaptive & neutral (using intergral method)
+        probability of a lineage trajectory, given an array of s and tau (using integral method)
+        output is scalar, given by the probability integrated over a grid of s and tau
+        Also returns the indices of s and tau in the input arrays which gave the highest probability
         """
-        integrand_log = self.function_posterior_loglikelihood_array(s_array, tau_array)
+        integrand_log = self.posterior_loglikelihood_array(s_array, tau_array)
         amplify_factor_log = -np.max(integrand_log) + 2
         amplify_integrand = np.exp(integrand_log + amplify_factor_log)
-        
+
+        s_idx,tau_idx = np.unravel_index(np.argmax(amplify_integrand),np.shape(amplify_integrand))
         tmp2 = np.dot(np.dot(self.s_coefficient, amplify_integrand), self.tau_coefficient)
-
         amplify_integral = tmp2 * self.s_stepsize * self.tau_stepsize / 9
-
         output  = np.log(amplify_integral) - amplify_factor_log
-        
-        return output
+        return output,s_idx,tau_idx
 
     
 
@@ -428,11 +420,8 @@ class FitMut:
         Calculate posterior log-likelihood value of a lineage given s and tau in optimization
         """
         s, tau = np.maximum(x[0], 1e-8), x[1]
-        output = self.function_posterior_loglikelihood_scaler(s, tau)
-
+        output = self.posterior_loglikelihood_scalar(s, tau)
         return -output #minimization only in python
-
-
 
     ##########
     def function_parallel(self, i): 
@@ -443,9 +432,8 @@ class FitMut:
         self.read_num_seq_lineage = self.read_num_seq[i, :]
         self.cell_num_seq_lineage = self.cell_num_seq[i, :]
         
-        p_ratio_log_adaptive = self.function_logprobabilityratio_adaptive_intergral(self.s_bin, self.tau_bin)
-        p_ratio_log_neutral = self.function_prior_loglikelihood_scaler(0, 0)
-        #p_ratio_log_neutral = self.function_prior_loglikelihood_approximate_scaler(0, 0)
+        p_ratio_log_adaptive,s_idx,tau_idx = self.log_ratio_adaptive_integral(self.s_bin, self.tau_bin)
+        p_ratio_log_neutral = self.prior_loglikelihood_scalar(0, 0)
         
         p_ratio_log = p_ratio_log_adaptive - p_ratio_log_neutral
         if p_ratio_log <= 40:
@@ -455,27 +443,35 @@ class FitMut:
             p_adaptive = 1
 
         if p_adaptive > self.threshold_adaptive:
-            if self.opt_algorithm == 'differential_evolution':
+            if self.opt_algorithm == 'direct_search':
+                s_range = np.arange(0,self.s_bin[-1],.01)
+                s_range[0] = 1e-8
+                tau_range = np.arange(self.tau_bin[0],self.tau_bin[-1],1)
+                _,s_idx1,tau_idx1 = self.log_ratio_adaptive_integral(s_range,tau_range) 
+                s_opt, tau_opt = s_range[s_idx1], tau_range[tau_idx1]
+
+            elif self.opt_algorithm == 'differential_evolution':
                 opt_output = differential_evolution(func = self.function_posterior_loglikelihood_opt,
                                                     seed = 1,
-                                                    bounds = self.bounds)
+                                                    bounds = self.bounds,
+                                                    x0 = [self.s_bin[s_idx],self.tau_bin[tau_idx]])
                 s_opt, tau_opt = opt_output.x[0], opt_output.x[1]
-            
-            #elif self.opt_algorithm == 'nelder_mead': 
-            #    opt_output = minimize(self.function_posterior_loglikelihood_opt, 
-            #                          x0=[100, 0.001, 1], # is this initialization necessary?
-            #                          method='Nelder-Mead',
-            #                          bounds=self.bounds, 
-            #                          options={'ftol': 1e-8, 'disp': False, 'maxiter': 500})
-            #    s_opt, tau_opt = opt_output.x[0], opt_output.x[1]
 
             elif self.opt_algorithm == 'nelder_mead': 
                 opt_output =self.function_neldermead(self.function_posterior_loglikelihood_opt, 
                                                      bounds = self.bounds,
                                                      thresh = 1e-13,
-                                                     max_iter = 500)
-
+                                                     max_iter = 500,
+                                                     x0 = [self.s_bin[s_idx],self.tau_bin[tau_idx]])
                 s_opt, tau_opt = opt_output[0], opt_output[1]
+            #elif self.opt_algorithm == 'nelder_mead': 
+            #    opt_output = minimize(self.function_posterior_loglikelihood_opt, 
+            #                          x0=[self.s_bin[s_idx],self.tau_bin[tau_idx]],
+            #                          method='Nelder-Mead',
+            #                          bounds=self.bounds, 
+            #                          options={'ftol': 1e-8, 'disp': False, 'maxiter': 500})
+            #    s_opt, tau_opt = opt_output.x[0], opt_output.x[1]
+
         else:
             s_opt, tau_opt = 0, 0
                 
@@ -499,11 +495,15 @@ class FitMut:
     ##########
     def function_neldermead(self, f_opt, 
                                   bounds=[[-np.inf,np.inf],[-np.inf,np.inf]],
-                                  thresh=1e-8, max_iter=500):
+                                  thresh=1e-8, max_iter=500,x0=None):
         """
         Manually implements nelder mead algorithm with bounds as specified
         """
-        ws = np.array([[0.01,1], [.01,5], [.21,1]])
+        if x0 is None:
+            ws = np.array([[0.01,1], [.01,5], [.21,1]])
+        else:
+            xi,yi = x0
+            ws = np.array([[xi,yi],[xi,yi+5],[xi+.05,yi]])
         
         # transformation parameters
         alpha = 1
@@ -511,7 +511,6 @@ class FitMut:
         gamma = 2
         delta = 1/2
         terminate = False
-        
         
         iter_num=0
         while True:
@@ -595,13 +594,16 @@ class FitMut:
         v1, v2 = eigvecs[:,0], eigvecs[:,1]
         lambda1, lambda2 = np.abs(eigs[0]), np.abs(eigs[1])
         
-        error_s_lineage =  max(np.abs(v1[0]/np.sqrt(lambda1)), np.abs(v2[0]/np.sqrt(lambda2)))
-        error_tau_lineage = max(np.abs(v1[1]/np.sqrt(lambda1)), np.abs(v2[1]/np.sqrt(lambda2)))
+        if lambda1==0 or lambda2==0:
+            error_s_lineage = np.nan
+            error_tau_lineage = np.nan
+        else:
+            error_s_lineage =  max(np.abs(v1[0]/np.sqrt(lambda1)), np.abs(v2[0]/np.sqrt(lambda2)))
+            error_tau_lineage = max(np.abs(v1[1]/np.sqrt(lambda1)), np.abs(v2[1]/np.sqrt(lambda2)))
 
         return error_s_lineage, error_tau_lineage
 
     
-   
     ##########
     def function_estimation_error(self):
         for i in self.idx_adaptive_inferred_index:
@@ -611,7 +613,6 @@ class FitMut:
             s_opt = self.result_s[i]
             tau_opt = self.result_tau[i]
             self.error_s[i], self.error_tau[i] = self.function_estimation_error_lineage(s_opt, tau_opt)
-         
     
 
     ##########
@@ -626,7 +627,7 @@ class FitMut:
         for i in self.idx_adaptive_inferred_index:
             self.read_num_seq_lineage = self.read_num_seq[i, :]
             self.cell_num_seq_lineage = self.cell_num_seq[i, :]
-            output = self.function_cell_num_theory_scaler(self.result_s[i], self.result_tau[i])
+            output = self.function_cell_num_theory_scalar(self.result_s[i], self.result_tau[i])
             self.mutant_cell_num_seq_theory[i,:] = output['mutant_cell_number']
             self.x_mean_numerator += self.mutant_cell_num_seq_theory[i,:] * self.result_s[i]
             self.mutant_fraction_numerator += self.mutant_cell_num_seq_theory[i,:]
@@ -634,7 +635,6 @@ class FitMut:
         self.x_mean_seq_dict[k_iter] = self.x_mean_numerator/self.cell_depth_seq
         self.mutant_fraction_dict[k_iter] = self.mutant_fraction_numerator/self.cell_depth_seq
 
-        
     
     ##########
     def function_run_iteration(self):
@@ -671,7 +671,6 @@ class FitMut:
 
         self.error_s = np.zeros(self.lineages_num, dtype=float)
         self.error_tau = np.zeros(self.lineages_num, dtype=float)
-
 
     
     #####
@@ -710,7 +709,6 @@ class FitMut:
             tmp.to_csv(self.output_filename + output_label + '_Cell_Number.csv',
                        index=False, header=False)
                 
-
 
     #####
     def function_main(self):

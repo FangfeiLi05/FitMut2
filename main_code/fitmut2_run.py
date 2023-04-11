@@ -35,9 +35,9 @@ parser.add_argument('-c', '--c', type=float, default=1,
 parser.add_argument('-n', '--maximum_iteration_number', type=int, default=50,
                     help='maximum number of iterations')
 
-parser.add_argument('-a', '--opt_algorithm', type=str, default='nelder_mead',
-                    choices = ['differential_evolution', 'nelder_mead'], 
-                    help='choose optmization algorithm')
+parser.add_argument('-a', '--opt_algorithm', type=str, default='direct_search',
+                    choices = ['direct_search','differential_evolution', 'nelder_mead'], 
+                    help='choose optimization algorithm')
 
 parser.add_argument('-p', '--parallelize', type=bool, default=True,
                     help='whether to use multiprocess module to parallelize inference across lineages')
