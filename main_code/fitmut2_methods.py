@@ -406,7 +406,7 @@ class FitMut:
         amplify_factor_log = -np.max(integrand_log) + 2
         amplify_integrand = np.exp(integrand_log + amplify_factor_log)
 
-        s_idx,tau_idx = np.unravel_index(np.argmax(amplify_integrand),np.shape(amplify_integrand))
+        s_idx,tau_idx = np.unravel_index(np.argmax(integrand_log),np.shape(integrand_log))
         tmp2 = np.dot(np.dot(self.s_coefficient, amplify_integrand), self.tau_coefficient)
         amplify_integral = tmp2 * self.s_stepsize * self.tau_stepsize / 9
         output  = np.log(amplify_integral) - amplify_factor_log
@@ -447,7 +447,9 @@ class FitMut:
                 s_range = np.arange(0,self.s_bin[-1],.01)
                 s_range[0] = 1e-8
                 tau_range = np.arange(self.tau_bin[0],self.tau_bin[-1],1)
-                _,s_idx1,tau_idx1 = self.log_ratio_adaptive_integral(s_range,tau_range) 
+                # calculate on a finer grid
+                log_likelihood_fine = self.posterior_loglikelihood_array(s_range,tau_range) 
+                s_idx1,tau_idx1 = np.unravel_index(np.argmax(log_likelihood_fine),np.shape(log_likelihood_fine))
                 s_opt, tau_opt = s_range[s_idx1], tau_range[tau_idx1]
 
             elif self.opt_algorithm == 'differential_evolution':
