@@ -720,11 +720,7 @@ class FitMut:
             tmp = pd.DataFrame(self.mutant_cell_num_seq_theory.astype(int))
             tmp.to_csv(self.output_filename + output_label + '_Cell_Number_Mutant_Estimated.csv',
                        index=False, header=False)
-    
-            tmp = pd.DataFrame(self.cell_num_seq.astype(int))
-            tmp.to_csv(self.output_filename + output_label + '_Cell_Number.csv',
-                       index=False, header=False)
-                
+   
 
     #####
     def function_main(self):
