@@ -80,24 +80,34 @@ class FitMut:
         if len(self.tau_bin)%2 == 0:
             self.tau_bin = self.tau_bin[:-1]
         
-        self.s_len = len(self.s_bin)
-        self.tau_len = len(self.tau_bin)
-        
-        self.s_coefficient = np.array([1] + [4, 2] * int((self.s_len-3)/2) + [4, 1])
-        self.tau_coefficient = np.array([1] + [4, 2] * int((self.tau_len-3)/2) + [4, 1])
+        self.s_coefficient = np.array([1] + [4, 2] * int((len(self.s_bin)-3)/2) + [4, 1])
+        self.tau_coefficient = np.array([1] + [4, 2] * int((len(self.tau_bin)-3)/2) + [4, 1])
              
-        
         # part of joint distribution       
-        mu_s_mean = 0.1
-        joint_tmp1 = np.tile(np.log(self.Ub), (self.s_len, self.tau_len))
-        joint_tmp2 = np.tile(np.log(mu_s_mean), (self.s_len, self.tau_len))
-        joint_tmp3 = np.tile(self.s_bin/mu_s_mean, (self.tau_len, 1))
-        joint_tmp4 = np.transpose(joint_tmp3, (1,0))
-        self.f_s_tau_joint_log_part = joint_tmp1 - joint_tmp2 - joint_tmp4 #exponential (Mathematica)
+        self.mu_s_mean = 0.1
+        self.f_s_tau_joint_log_part = self.get_log_prior_mu(self.s_bin,self.tau_bin)
 
+        # finer grids for direct seach of parameters
+        self.s_bin_fine = np.arange(0,self.s_bin[-1],.005)
+        self.s_bin_fine[0] = 1e-8
+        self.tau_bin_fine = np.arange(self.tau_bin[0],self.tau_bin[-1],2)
+        self.f_s_tau_joint_log_part_fine = self.get_log_prior_mu(self.s_bin_fine,self.tau_bin_fine)
 
-              
     ##########
+    def get_log_prior_mu(self,s_array,tau_array):
+        """
+        Calculate log of the prior (exponential) disribution for mu(s). Returns a 2D array.
+        """
+        s_len = len(s_array)
+        tau_len = len(tau_array)
+        mu_s_mean = self.mu_s_mean
+        joint_tmp1 = np.tile(np.log(self.Ub), (s_len, tau_len))
+        joint_tmp2 = np.tile(np.log(mu_s_mean), (s_len, tau_len))
+        joint_tmp3 = np.tile(s_array/mu_s_mean, (tau_len, 1))
+        joint_tmp4 = np.transpose(joint_tmp3, (1,0))
+        return joint_tmp1 - joint_tmp2 - joint_tmp4
+              
+    
     def function_kappa(self):
         """
         Calculate kappa value for each timepoint by finding 
@@ -366,7 +376,7 @@ class FitMut:
                 tau (scalar) 
         Output: log-likelihood value of all time poins (scalar)
         """
-        mu_s_mean = 0.1
+        mu_s_mean = self.mu_s_mean
         f_s_tau_joint_log = np.log(self.Ub) - np.log(mu_s_mean) - s/mu_s_mean + np.log(s/self.noise_c * self.cell_num_seq_lineage[0])  #exponential (Mathematica)
         #f_s_tau_joint_log =  np.log(self.Ub) + np.log(4*s/mu_s_mean**2) - 2*s/mu_s_mean + np.log(s * self.cell_num_seq_lineage[0])  #erlang prior:
         #f_s_tau_joint_log =  np.log(self.Ub)  - np.log(2*mu_s_mean) + np.log(s * self.cell_num_seq_lineage[0])  #uniform prior
@@ -378,18 +388,23 @@ class FitMut:
     
     
     ##########
-    def posterior_loglikelihood_array(self, s_array, tau_array):
+    def posterior_loglikelihood_array(self, s_array, tau_array,fine=False):
         """
         Calculate posterior log-likelihood value of a lineage given s and tau.
+        Calculates the log likelihood on a finer grid if specified
         Inputs: s_array (array, vector)
                 tau_array (array, vector)
+                fine (boolean)
         Output: log-likelihood value of all time points (array, 2D matrix)
         """
         tau_len = len(tau_array)
 
         joint_tmp5 = np.tile(np.log(s_array/self.noise_c  * self.cell_num_seq_lineage[0]), (tau_len, 1))
         joint_tmp6 = np.transpose(joint_tmp5, (1,0))
-        f_s_tau_joint_log = self.f_s_tau_joint_log_part + joint_tmp6  #exponential (Mathematica)
+        if not fine:
+            f_s_tau_joint_log = self.f_s_tau_joint_log_part + joint_tmp6  #exponential prior distribution
+        else:
+            f_s_tau_joint_log = self.f_s_tau_joint_log_part_fine + joint_tmp6
         output = self.prior_loglikelihood_array(s_array, tau_array) + f_s_tau_joint_log
 
         return output
@@ -444,13 +459,10 @@ class FitMut:
 
         if p_adaptive > self.threshold_adaptive:
             if self.opt_algorithm == 'direct_search':
-                s_range = np.arange(0,self.s_bin[-1],.01)
-                s_range[0] = 1e-8
-                tau_range = np.arange(self.tau_bin[0],self.tau_bin[-1],1)
                 # calculate on a finer grid
-                log_likelihood_fine = self.posterior_loglikelihood_array(s_range,tau_range) 
+                log_likelihood_fine = self.posterior_loglikelihood_array(self.s_bin_fine,self.tau_bin_fine,fine=True) 
                 s_idx1,tau_idx1 = np.unravel_index(np.argmax(log_likelihood_fine),np.shape(log_likelihood_fine))
-                s_opt, tau_opt = s_range[s_idx1], tau_range[tau_idx1]
+                s_opt, tau_opt = self.s_bin_fine[s_idx1], self.tau_bin_fine[tau_idx1]
 
             elif self.opt_algorithm == 'differential_evolution':
                 opt_output = differential_evolution(func = self.function_posterior_loglikelihood_opt,
@@ -656,6 +668,8 @@ class FitMut:
 
         else:
             self.result_probability_adaptive = np.zeros(self.lineages_num, dtype=float)
+            self.result_s = np.zeros(self.lineages_num, dtype=float)
+            self.result_tau = np.zeros(self.lineages_num, dtype=float)
             for i in range(self.lineages_num):
                 output = self.function_parallel(i)
                 self.result_probability_adaptive[i] = output[0]
