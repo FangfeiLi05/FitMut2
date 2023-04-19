@@ -7,7 +7,10 @@
 
 ### 1. What is FitMut2?
 
-FitMut2 is an algorithm developed for identifying adaptive mutations that established in barcoded evolution experiments, and inferring their mutational parameters (fitness effect and establishment time). It is preceded by FitMut1, which was developed in [S. F. Levy, et al. Quantitative evolutionary dynamics using high-resolution lineage tracking. Nature, 519(7542): 181-186 (2015)](https://www.nature.com/articles/nature14279) and originally implemented in Mathematica. In this repository we have reimplemented FitMut1 in Python and additionally adapted it for higher accuracy in situations with lower sequencing coverage. If you use this software, please reference our [preprint](https://www.biorxiv.org/content/10.1101/2022.09.25.509409v1). FitMut2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+FitMut2 is an algorithm developed for identifying adaptive mutations that established in barcoded evolution experiments, and inferring their mutational parameters (fitness effect and establishment time). It is preceded by FitMut1, which was developed in [S. F. Levy, et al. Quantitative evolutionary dynamics using high-resolution lineage tracking. Nature, 519(7542): 181-186 (2015)](https://www.nature.com/articles/nature14279) and originally implemented in Mathematica. In this repository we have reimplemented FitMut1 in Python and additionally adapted it for higher accuracy in situations with lower sequencing coverage. If you use this software, please reference our [preprint](https://www.biorxiv.org/content/10.1101/2022.09.25.509409v1). (Codes and results for this paper are store in a shared folder in Google Drive [here]
+(https://drive.google.com/drive/folders/1WNmyXov6y5G-mgrvxVLhTLjZGEI-mgnC?usp=share_link))
+
+FitMut2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 
 This repository has two main scripts (aside from the implementation of FitMut1):
 * `fitmutsimu_run.py` simulates the experimental process of a barcode-sequencing (bar-seq) evolution experiment. This can be used to test the inference algorithm on simulated data where the ground truth is known.
@@ -107,3 +110,6 @@ python fitmut2_run.py --help
 ```
 python fitmut2_run.py -i simu_test_EvoSimulation_Read_Number.csv -t fitmut_input_time_points.csv -o test
 ```
+
+
+
