@@ -98,6 +98,7 @@ python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mu
   + 8th column of .csv: estimated fraction of mutant cells of the population per sequenced time point
 * `output_Mean_fitness_Result.csv`: estimated mean fitness at each iteration
 * `output_Cell_Number_Mutant_Estimated.csv`: estimated effective number of mutant cells per barcode for each time point
+* `output_Cell_Number.csv`: effective number of cells per barcode for each time point
 
 ##### For Help
 ```
