@@ -64,7 +64,7 @@ class FitMut:
         self.mutant_fraction_dict = dict() # fraction of mutatant cells at each iteration
         
         self.iteration_stop_threhold = 5e-7 # threshold for terminating iterations
-        self.threshold_adaptive = 0.5 # threshold for determining an adaptive lineage
+        self.threshold_adaptive = 0.9 # threshold for determining an adaptive lineage
         self.iter_timing_list = [] # running time for each iteration
 
         # define some variables for convinent vectorization computing
@@ -720,6 +720,10 @@ class FitMut:
             tmp = pd.DataFrame(self.mutant_cell_num_seq_theory.astype(int))
             tmp.to_csv(self.output_filename + output_label + '_Cell_Number_Mutant_Estimated.csv',
                        index=False, header=False)
+
+			tmp = pd.DataFrame(self.cell_num_seq.astype(int))
+			tmp.to_csv(self.output_filename + output_label + '_Cell_Number.csv',
+			           index=False, header=False)
    
 
 
