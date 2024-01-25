@@ -81,7 +81,7 @@ python fitmutsimu_run.py -l 10000 -t simu_input_time_points.csv -s simu_input_mu
 * `--delta_t` or `-dt`: number of generations between bottlenecks. This is approximately given by the logarithm (base 2) of the dilution factor between transfers.  (`default: 8`)
 * `--c` or `-c`: half of variance introduced by cell growth and cell transfer. In most cases the default value should suffice, unless the experimental value is measureable. (`default: 1`)
 * `--maximum_iteration_number` or `-n`: maximum number of iterations in the self consistent estimation of mean fitness and lineage fitnesses (`default: 50`)
-* `--opt_algorithm` or `-a`: optimization algorithm (Nelder Mead or Differential Evolution) (`default: nelder_mead`)
+* `--opt_algorithm` or `-a`: optimization algorithm (direct search, Nelder-Mead or differential evolution) (`default: direct_search`)
 * `--parallelize` or `-p`: whether to use Python multiprocess module to parallelize inference across lineages (`default: True`)
 * `--save_steps` or `-s`: whether to save the data files after each iteration of inference (`default: False`)
 * `--output_filename` or `-o`: prefix of output files (`default: output`)
