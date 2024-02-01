@@ -40,7 +40,7 @@ parser.add_argument('-a', '--opt_algorithm', type=str, default='nelder_mead',
                     choices = ['differential_evolution', 'nelder_mead'], 
                     help='choose optmization algorithm')
 
-parser.add_argument('-p', '--parallelize', type=bool, default=True,
+parser.add_argument('-p', '--parallelize', type=str, default='1',
                     help='whether to use multiprocess module to parallelize inference across lineages')
  
 parser.add_argument('-o', '--output_filename', type=str, default='output',
@@ -61,7 +61,7 @@ delta_t = args.delta_t
 c = args.c
 l1 = args.l1
 l2 = args.l2
-parallelize = args.parallelize
+parallelize = bool(int(args.parallelize))
 opt_algorithm = args.opt_algorithm
 output_filename = args.output_filename
 

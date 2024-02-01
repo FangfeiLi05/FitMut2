@@ -39,10 +39,10 @@ parser.add_argument('-a', '--opt_algorithm', type=str, default='direct_search',
                     choices = ['direct_search','differential_evolution', 'nelder_mead'], 
                     help='choose optimization algorithm')
 
-parser.add_argument('-p', '--parallelize', type=bool, default=True,
+parser.add_argument('-p', '--parallelize', type=str, default='1',
                     help='whether to use multiprocess module to parallelize inference across lineages')
 
-parser.add_argument('-s', '--save_steps', type=bool, default=False,
+parser.add_argument('-s', '--save_steps', type=str, default='0',
                     help='whether to output files in intermediate step of iterations')
                     
 parser.add_argument('-o', '--output_filename', type=str, default='output',
@@ -61,11 +61,11 @@ cell_depth_seq = np.array(csv_input[1][~pd.isnull(csv_input[1])], dtype=float)
 Ub = args.mutation_rate
 delta_t = args.delta_t
 c = args.c # per cycle
-parallelize = args.parallelize
+parallelize = bool(int(args.parallelize))
 max_iter_num = args.maximum_iteration_number
 opt_algorithm = args.opt_algorithm
 output_filename = args.output_filename
-save_steps = args.save_steps
+save_steps = bool(int(args.save_steps))
 
 my_obj = fitmut2_methods.FitMut(read_num_seq = read_num_seq,
                                    t_seq = t_seq,
