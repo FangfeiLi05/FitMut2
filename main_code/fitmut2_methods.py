@@ -15,9 +15,9 @@ from tqdm import tqdm
 
 # fitness inference object
 class FitMut:
-    def __init__(self, read_num_seq,
-                       t_seq,
-                       cell_depth_seq,
+    def __init__(self, r_seq,
+                       t_list,
+                       cell_depth_list,
                        Ub,
                        delta_t, 
                        c,
@@ -28,16 +28,19 @@ class FitMut:
                        output_filename):
         
         # preparing inputs
-        self.read_num_seq = read_num_seq
-        self.read_depth_seq = np.sum(self.read_num_seq, axis=0)
-        self.lineages_num = np.shape(self.read_num_seq)[0]
-        self.t_seq = t_seq
-        self.seq_num = len(self.t_seq)
-        self.cell_depth_seq = cell_depth_seq
-        self.ratio = np.true_divide(self.read_depth_seq, self.cell_depth_seq)
-        self.cell_num_seq = self.read_num_seq / self.ratio
-        self.cell_num_seq[self.cell_num_seq < 1] = 1 
-        self.read_num_seq[self.read_num_seq < 1] = 1 # approximate distribution is not accurate when r < 1
+        self.r_seq = r_seq
+        self.read_depth_seq = np.sum(self.r_seq, axis=0)
+        self.lineages_num = np.shape(self.r_seq)[0]
+        self.t_list = t_list
+        self.seq_num = len(self.t_list)
+        self.cell_depth_list = cell_depth_list
+        self.ratio = np.true_divide(self.read_depth_seq, self.cell_depth_list)
+        self.n_seq = self.r_seq / self.ratio
+
+        # eliminates zeros from data for later convenience -- also have to modify theory
+        # in order to not classify neutrals as adaptive
+        self.n_seq[self.n_seq < 1] = 1 
+        self.r_seq[self.r_seq < 1] = 1
 
         self.Ub = Ub
         self.delta_t = delta_t
@@ -54,20 +57,20 @@ class FitMut:
 
         # set bounds for the optimization
         if self.opt_algorithm == 'differential_evolution':
-            self.bounds = Bounds([1e-8, -100], [.5, math.floor(self.t_seq[-1] - 1)])
+            self.bounds = Bounds([1e-8, -100], [.5, math.floor(self.t_list[-1] - 1)])
         elif self.opt_algorithm == 'nelder_mead':
-            self.bounds = [[1e-8, .5], [-100, math.floor(self.t_seq[-1] - 1)]]
+            self.bounds = [[1e-8, .5], [-100, math.floor(self.t_list[-1] - 1)]]
         
         
         # define other variables
-        self.x_mean_seq_dict = dict() # mean fitness at each iteration
+        self.s_mean_seq_dict = dict() # mean fitness at each iteration
         self.mutant_fraction_dict = dict() # fraction of mutatant cells at each iteration
         
         self.iteration_stop_threhold = 5e-7 # threshold for terminating iterations
         self.threshold_adaptive = 0.9 # threshold for determining an adaptive lineage
         self.iter_timing_list = [] # running time for each iteration
 
-        # define some variables for convinent vectorization computing
+        # define some variables for convenient vectorization computing
         self.s_stepsize = 0.02
         self.tau_stepsize = 5
         
@@ -76,12 +79,12 @@ class FitMut:
         if len(self.s_bin)%2 == 0:
             self.s_bin = self.s_bin[:-1]
 
-        self.tau_bin = np.arange(-100, self.t_seq[-1]-1, self.tau_stepsize)
+        self.tau_bin = np.arange(-100, self.t_list[-1]-1, self.tau_stepsize)
         if len(self.tau_bin)%2 == 0:
             self.tau_bin = self.tau_bin[:-1]
         
-        self.s_coefficient = np.array([1] + [4, 2] * int((len(self.s_bin)-3)/2) + [4, 1])
-        self.tau_coefficient = np.array([1] + [4, 2] * int((len(self.tau_bin)-3)/2) + [4, 1])
+        self.s_coeff = np.array([1] + [4, 2] * int((len(self.s_bin)-3)/2) + [4, 1])
+        self.tau_coeff = np.array([1] + [4, 2] * int((len(self.tau_bin)-3)/2) + [4, 1])
              
         # part of joint distribution       
         self.mu_s_mean = 0.1
@@ -96,19 +99,19 @@ class FitMut:
     ##########
     def get_log_prior_mu(self,s_array,tau_array):
         """
-        Calculate log of the prior (exponential) disribution for mu(s). Returns a 2D array.
+        Calculate log of the prior (exponential) distribution for mu(s). Returns a 2D array.
         """
         s_len = len(s_array)
         tau_len = len(tau_array)
         mu_s_mean = self.mu_s_mean
-        joint_tmp1 = np.tile(np.log(self.Ub), (s_len, tau_len))
-        joint_tmp2 = np.tile(np.log(mu_s_mean), (s_len, tau_len))
-        joint_tmp3 = np.tile(s_array/mu_s_mean, (tau_len, 1))
-        joint_tmp4 = np.transpose(joint_tmp3, (1,0))
-        return joint_tmp1 - joint_tmp2 - joint_tmp4
+        joint_dist1 = np.tile(np.log(self.Ub), (s_len, tau_len))
+        joint_dist2 = np.tile(np.log(mu_s_mean), (s_len, tau_len))
+        joint_dist3 = np.tile(s_array/mu_s_mean, (tau_len, 1))
+        joint_dist4 = np.transpose(joint_dist3, (1,0))
+        return joint_dist1 - joint_dist2 - joint_dist4
               
     
-    def function_kappa(self):
+    def calculate_kappa(self):
         """
         Calculate kappa value for each timepoint by finding 
         mean and variance of distribution of read number for 
@@ -118,24 +121,24 @@ class FitMut:
         self.kappa_seq[0] = 2.5
 
         for k in range(self.seq_num-1):
-            read_num_t1_left, read_num_t1_right = 20, 40 # neutral lineages with read numbers in [20, 40)
-            read_num_t2_left, read_num_t2_right = 0, 4*read_num_t1_right
+            r_t1_left, r_t1_right = 20, 40 # neutral lineages with read numbers in [20, 40)
+            r_t2_left, r_t2_right = 0, 4*r_t1_right
         
-            kappa = np.nan * np.zeros(read_num_t1_right - read_num_t1_left, dtype=float)
+            kappa = np.nan * np.zeros(r_t1_right - r_t1_left, dtype=float)
                         
-            for read_num_t1 in range(read_num_t1_left, read_num_t1_right):
-                pos = self.read_num_seq[:,k] == read_num_t1
+            for r_t1 in range(r_t1_left, r_t1_right):
+                pos = self.r_seq[:,k] == r_t1
                 
                 if np.sum(pos)>100:
-                    pdf_conditional_measure = np.histogram(self.read_num_seq[pos, k+1],
-                                                           bins=np.arange(read_num_t2_left, read_num_t2_right+0.001),
+                    pdf_conditional_measure = np.histogram(self.r_seq[pos, k+1],
+                                                           bins=np.arange(r_t2_left, r_t2_right+0.001),
                                                            density=True)[0]
             
-                    dist_x = np.arange(read_num_t2_left, read_num_t2_right)
+                    dist_x = np.arange(r_t2_left, r_t2_right)
                     param_mean = np.matmul(dist_x, pdf_conditional_measure)
                     param_variance = np.matmul((dist_x - param_mean)**2, pdf_conditional_measure)
                     
-                    kappa[read_num_t1 - read_num_t1_left] = param_variance/(2*param_mean)
+                    kappa[r_t1 - r_t1_left] = param_variance/(2*param_mean)
                 
                 if np.sum(~np.isnan(kappa)): # if not all values of kappa are nan
                     self.kappa_seq[k+1] = np.nanmean(kappa)
@@ -147,49 +150,50 @@ class FitMut:
         
 
     ##########
-    def function_sum_term(self):
+    def calculate_E(self):
         """
-        Pre-calculate a term (i.e. sum_term) to reduce calculations in estimating the number of reads.
+        Pre-calculate a term (capturing the decay in lineage size from the mean fitness)
+        to reduce calculations in estimating the number of reads.
         """
-        self.t_seq_extend = np.concatenate((-np.arange(self.delta_t, 100+self.delta_t, self.delta_t)[::-1], self.t_seq))
-        seq_num_extend = len(self.t_seq_extend)
-        #self.x_mean_seq_extend = np.concatenate((1e-8 * np.ones(len(self.t_seq_extend) - self.seq_num, dtype=float), self.x_mean_seq))
-        self.x_mean_seq_extend = np.concatenate((np.zeros(len(self.t_seq_extend) - self.seq_num, dtype=float), self.x_mean_seq))
+        self.t_list_extend = np.concatenate((-np.arange(self.delta_t, 100+self.delta_t, self.delta_t)[::-1], self.t_list))
+        seq_num_extend = len(self.t_list_extend)
+        #self.s_mean_seq_extend = np.concatenate((1e-8 * np.ones(len(self.t_list_extend) - self.seq_num, dtype=float), self.s_mean_seq))
+        self.s_mean_seq_extend = np.concatenate((np.zeros(len(self.t_list_extend) - self.seq_num, dtype=float), self.s_mean_seq))
 
-        self.sum_term_extend = np.ones(seq_num_extend, dtype=float)  
-        sum_term_extend_tmp = 0
+        self.E_extend = np.ones(seq_num_extend, dtype=float)  
+        log_E = 0
         for k in range(1, seq_num_extend):
-            #sum_term_extend_tmp += (self.t_seq_extend[k] - self.t_seq_extend[k-1]) * self.x_mean_seq_extend[k]
-            sum_term_extend_tmp += (self.t_seq_extend[k]-self.t_seq_extend[k-1]) * (self.x_mean_seq_extend[k] + self.x_mean_seq_extend[k-1])/2
-            self.sum_term_extend[k] = np.exp(-sum_term_extend_tmp)
+            #log_E += (self.t_list_extend[k] - self.t_list_extend[k-1]) * self.s_mean_seq_extend[k]
+            log_E += (self.t_list_extend[k]-self.t_list_extend[k-1]) * (self.s_mean_seq_extend[k] + self.s_mean_seq_extend[k-1])/2
+            self.E_extend[k] = np.exp(-log_E)
 
-        self.sum_term_extend_t_seq = np.interp(self.t_seq, self.t_seq_extend, self.sum_term_extend) # from the very beginning to tk
+        self.E_extend_t_list = np.interp(self.t_list, self.t_list_extend, self.E_extend) # from the very beginning to tk
         
-        self.sum_term_t_seq = np.zeros(self.seq_num-1, dtype=float) # from tkminus1 to tk
-        sum_term_extend_t_seq_tmp = 0
+        self.E_t_list = np.zeros(self.seq_num-1, dtype=float) # from tkminus1 to tk
+        log_E_t = 0
         for k in range(self.seq_num-1):
-            sum_term_extend_t_seq_tmp = (self.t_seq[k+1]-self.t_seq[k]) * (self.x_mean_seq[k+1] + self.x_mean_seq[k])/2   
-            self.sum_term_t_seq[k] =  np.exp(-sum_term_extend_t_seq_tmp)  
+            log_E_t = (self.t_list[k+1]-self.t_list[k]) * (self.s_mean_seq[k+1] + self.s_mean_seq[k])/2   
+            self.E_t_list[k] =  np.exp(-log_E_t)  
 
     
 
     ##########
-    def function_establishment_size_scalar(self, s, tau):
+    def establishment_size_scalar(self, s, tau):
         """
         Calculate establishment size of a mutation with fitness effect s and establishment time tau.
         Inputs: s (scalar)
                 tau (scalar)
         Output: established_size (scalar)
         """
-        x_mean_tau = np.interp(tau, self.t_seq_extend, self.x_mean_seq_extend)
-        established_size = self.noise_c / np.maximum(s - x_mean_tau, 0.005)
+        s_mean_tau = np.interp(tau, self.t_list_extend, self.s_mean_seq_extend)
+        established_size = self.noise_c / np.maximum(s - s_mean_tau, 0.005)
 
         return established_size
 
     
 
     ##########
-    def function_establishment_size_array(self, s_array, tau_array):
+    def establishment_size_array(self, s_array, tau_array):
         """
         Calculate establishment size of a mutation with fitness effect s and establishment time tau.
         Inputs: s_array (array, vector)
@@ -199,18 +203,17 @@ class FitMut:
         s_len = len(s_array)
         tau_len = len(tau_array)
 
-        s_matrix_tmp = np.tile(s_array, (tau_len, 1))        
-        s_matrix = np.transpose(s_matrix_tmp, (1,0))
+        s_matrix = np.transpose(np.tile(s_array, (tau_len, 1)), (1,0))
 
-        x_mean_tau = np.tile(np.interp(tau_array, self.t_seq_extend, self.x_mean_seq_extend), (s_len, 1)) #(s_len, tau_len)
-        established_size = self.noise_c / np.maximum(s_matrix - x_mean_tau, 0.005)
+        s_mean_tau = np.tile(np.interp(tau_array, self.t_list_extend, self.s_mean_seq_extend), (s_len, 1)) #(s_len, tau_len)
+        established_size = self.noise_c / np.maximum(s_matrix - s_mean_tau, 0.005)
 
         return established_size
 
 
   
     ##########
-    def function_cell_num_theory_scalar(self, s, tau):
+    def n_theory_scalar(self, s, tau):
         """
         Estimate cell number & mutant cell number all time points for a lineage given s and tau. 
         Inputs: s (scalar)
@@ -218,41 +221,38 @@ class FitMut:
         Output: {'cell_number': (array, vector), 
                  'mutant_cell_number': (array, vector)}
         """            
-        cell_num_seq_lineage_observed = self.cell_num_seq_lineage
+        n_observed = self.n_seq_lineage
         
-        cell_num_seq_lineage_theory = np.zeros(self.seq_num, dtype=float)
-        cell_num_seq_lineage_theory[0] = cell_num_seq_lineage_observed[0]
-        mutant_cell_num_seq_lineage_theory = np.zeros(self.seq_num, dtype=float)
-        unmutant_cell_num_seq_lineage_theory = np.zeros(self.seq_num, dtype=float)
+        n_theory = np.zeros(self.seq_num, dtype=float)
+        n_theory[0] = n_observed[0]
+        mutant_n_theory = np.zeros(self.seq_num, dtype=float)
+        unmutant_n_theory = np.zeros(self.seq_num, dtype=float)
         
-        established_size = self.function_establishment_size_scalar(s, tau)
-        sum_term_extend_tau = np.interp(tau, self.t_seq_extend, self.sum_term_extend)
+        established_size = self.establishment_size_scalar(s, tau)
+        E_extend_tau = np.interp(tau, self.t_list_extend, self.E_extend)
         
         for k in range(self.seq_num):
-            sum_term_tk_minus_tau = np.divide(self.sum_term_extend_t_seq[k], sum_term_extend_tau)
-            mutant_tmp1 = np.exp(s * (self.t_seq[k] - tau))
-            mutant_tmp2 = np.multiply(established_size, mutant_tmp1)
-            mutant_tmp3 = np.multiply(mutant_tmp2, sum_term_tk_minus_tau)                      
-            mutant_cell_num_seq_lineage_theory[k] = np.minimum(mutant_tmp3, cell_num_seq_lineage_observed[k])
+            E_tk_minus_tau = np.divide(self.E_extend_t_list[k], E_extend_tau)
+            mutant1 = np.exp(s * (self.t_list[k] - tau))
+            mutant2 = np.multiply(established_size, mutant1)
+            mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
+            mutant_n_theory[k] = np.minimum(mutant3, n_observed[k])
             
-            unmutant_cell_num_seq_lineage_theory[k] = cell_num_seq_lineage_observed[k] - mutant_cell_num_seq_lineage_theory[k]
+            unmutant_n_theory[k] = n_observed[k] - mutant_n_theory[k]
 
             if k > 0:
-                sum_term_tk_minus_tkminus1 = self.sum_term_t_seq[k-1]
-                #sum_term_tk_minus_tkminus1 = self.sum_term_extend_t_seq[k] / self.sum_term_extend_t_seq[k-1]
-                both_tmp1 = np.exp(s* (self.t_seq[k] - self.t_seq[k-1]))
-                both_tmp2 = unmutant_cell_num_seq_lineage_theory[k-1] + np.multiply(mutant_cell_num_seq_lineage_theory[k-1], both_tmp1)
-                cell_num_seq_lineage_theory[k] = both_tmp2 * sum_term_tk_minus_tkminus1
+                E_tk_minus_tkminus1 = self.E_t_list[k-1]
+                #E_tk_minus_tkminus1 = self.E_extend_t_list[k] / self.E_extend_t_list[k-1]
+                growth_fac = np.exp(s* (self.t_list[k] - self.t_list[k-1]))
+                lineage_size0 = unmutant_n_theory[k-1] + np.multiply(mutant_n_theory[k-1], growth_fac)
+                n_theory[k] = lineage_size0 * E_tk_minus_tkminus1
             
-        output = {'cell_number': cell_num_seq_lineage_theory, 
-                  'mutant_cell_number': mutant_cell_num_seq_lineage_theory}
-
-        return output
+        return {'cell_number': n_theory,'mutant_cell_number': mutant_n_theory}
     
 
 
     ##########
-    def function_cell_num_theory_array(self, s_array, tau_array):
+    def n_theory_array(self, s_array, tau_array):
         """
         Estimate cell number & mutant cell number all time points for a lineage given s and tau. 
         Inputs: s_array (array, vector)
@@ -263,105 +263,98 @@ class FitMut:
         s_len = len(s_array)
         tau_len = len(tau_array)
 
-        s_matrix_tmp = np.tile(s_array, (tau_len, 1))        
-        s_matrix = np.transpose(s_matrix_tmp, (1,0))
+        s_matrix = np.transpose(np.tile(s_array, (tau_len, 1)), (1,0))
         tau_matrix  = np.tile(tau_array, (s_len, 1))
             
-        cell_num_seq_lineage_observed = np.tile(self.cell_num_seq_lineage, (s_len, tau_len, 1))
+        n_observed = np.tile(self.n_seq_lineage, (s_len, tau_len, 1))
         
-        cell_num_seq_lineage_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
-        cell_num_seq_lineage_theory[:,:,0] = cell_num_seq_lineage_observed[:,:,0]
-        mutant_cell_num_seq_lineage_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
-        unmutant_cell_num_seq_lineage_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
+        n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
+        n_theory[:,:,0] = n_observed[:,:,0]
+        mutant_n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
+        unmutant_n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
             
-        established_size = self.function_establishment_size_array(s_array, tau_array) #(s_len, tau_len)
+        established_size = self.establishment_size_array(s_array, tau_array) #(s_len, tau_len)
         
-        sum_term_extend_tau_tmp = np.interp(tau_array, self.t_seq_extend, self.sum_term_extend)
-        sum_term_extend_tau = np.tile(sum_term_extend_tau_tmp, (s_len, 1)) #(s_len, tau_len)
+        E_extend_tau = np.tile(np.interp(tau_array, self.t_list_extend, self.E_extend), (s_len, 1)) #(s_len, tau_len)
         
         for k in range(self.seq_num):
-            sum_term_tk_minus_tau = np.divide(self.sum_term_extend_t_seq[k], sum_term_extend_tau)
-            mutant_tmp1 = np.exp(s_matrix * (self.t_seq[k] - tau_matrix))
-            mutant_tmp2 = np.multiply(established_size, mutant_tmp1)
-            mutant_tmp3 = np.multiply(mutant_tmp2, sum_term_tk_minus_tau)                      
-            mutant_cell_num_seq_lineage_theory[:,:,k] = np.minimum(mutant_tmp3, cell_num_seq_lineage_observed[:,:,k])
+            E_tk_minus_tau = np.divide(self.E_extend_t_list[k], E_extend_tau)
+            mutant1 = np.exp(s_matrix * (self.t_list[k] - tau_matrix))
+            mutant2 = np.multiply(established_size, mutant1)
+            mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
+            mutant_n_theory[:,:,k] = np.minimum(mutant3, n_observed[:,:,k])
             
-            unmutant_cell_num_seq_lineage_theory[:,:,k] = cell_num_seq_lineage_observed[:,:,k] - mutant_cell_num_seq_lineage_theory[:,:,k]
+            unmutant_n_theory[:,:,k] = n_observed[:,:,k] - mutant_n_theory[:,:,k]
                 
             if k > 0:
-                sum_term_tk_minus_tkminus1 = self.sum_term_t_seq[k-1]
-                #sum_term_tk_minus_tkminus1 = self.sum_term_extend_t_seq[k] / self.sum_term_extend_t_seq[k-1]
-                both_tmp1 = np.exp(s_matrix * (self.t_seq[k] - self.t_seq[k-1]))
-                both_tmp2 = unmutant_cell_num_seq_lineage_theory[:,:,k-1] + np.multiply(mutant_cell_num_seq_lineage_theory[:,:,k-1], both_tmp1)
-                cell_num_seq_lineage_theory[:,:,k] = both_tmp2 * sum_term_tk_minus_tkminus1
+                E_tk_minus_tkminus1 = self.E_t_list[k-1]
+                #E_tk_minus_tkminus1 = self.E_extend_t_list[k] / self.E_extend_t_list[k-1]
+                growth_fac = np.exp(s_matrix * (self.t_list[k] - self.t_list[k-1]))
+                lineage_size0 = unmutant_n_theory[:,:,k-1] + np.multiply(mutant_n_theory[:,:,k-1], growth_fac)
+                n_theory[:,:,k] = lineage_size0 * E_tk_minus_tkminus1
     
-        output = {'cell_number': cell_num_seq_lineage_theory,
-                  'mutant_cell_number': mutant_cell_num_seq_lineage_theory}
-
-        return output
+        return {'cell_number': n_theory,'mutant_cell_number': mutant_n_theory}
 
 
 
     ##########
-    def prior_loglikelihood_scalar(self, s, tau):
+    def loglikelihood_scalar(self, s, tau):
         """
         Calculate log-likelihood value of a lineage given s and tau.
         Inputs: s(scalar)
                 tau (scalar) 
         Output: log-likelihood value of all time points (scalar)
         """        
-        output = self.function_cell_num_theory_scalar(s, tau)
-        cell_num_seq_lineage_theory = output['cell_number']
-        read_num_seq_lineage_theory = np.multiply(cell_num_seq_lineage_theory, self.ratio)
-        read_num_seq_lineage_theory[read_num_seq_lineage_theory < 1] = 1
+        n_theory = self.n_theory_scalar(s, tau)['cell_number']
+        r_theory = np.multiply(n_theory, self.ratio)
+
+        # modifies theoretical read number so that one can compare to modified data
+        r_theory[r_theory < 1] = 1
         
-        tmp_kappa_reverse = 1/self.kappa_seq
+        kappa_inverse = 1/self.kappa_seq
 
-        tmp_theory = read_num_seq_lineage_theory
-        tmp_observed = self.read_num_seq_lineage
-        tmp_observed_reverse = 1/tmp_observed
-        ive_ele = 2* np.multiply(np.sqrt(np.multiply(tmp_theory, tmp_observed)), tmp_kappa_reverse)
+        observed = self.r_seq_lineage
+        observed_inverse = 1/observed
+        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, observed)), kappa_inverse)
  
-        tmp_part1 = np.log(tmp_kappa_reverse)
-        tmp_part2 = 1/2 * np.log(np.multiply(tmp_theory, tmp_observed_reverse))
-        tmp_part3 = -np.multiply(tmp_theory + tmp_observed, tmp_kappa_reverse)
-        tmp_part4 = np.log(special.ive(1, ive_ele)) + ive_ele
+        part2 = 1/2 * np.log(np.multiply(r_theory, observed_inverse))
+        part3 = -np.multiply(r_theory + observed, kappa_inverse)
+        part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
-        log_likelihood_seq_lineage = tmp_part1 + tmp_part2 + tmp_part3 + tmp_part4
+        log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
         log_likelihood_lineage = np.sum(log_likelihood_seq_lineage, axis=0)
 
         return log_likelihood_lineage
         
     
     ##########
-    def prior_loglikelihood_array(self, s_array, tau_array):
+    def loglikelihood_array(self, s_array, tau_array):
         """
         Calculate log-likelihood value of a lineage given s and tau.
         Inputs: s_array (array, vector)
                 tau_array (array, vector) 
-        Output: log-likelihood value of all time poins (array, 2D matrix)
+        Output: log-likelihood value of all time points (array, 2D matrix)
         """
         s_len = len(s_array)
         tau_len = len(tau_array)
 
-        output = self.function_cell_num_theory_array(s_array, tau_array)
-        cell_num_seq_lineage_theory = output['cell_number'] #(s_len, tau_len, seq_num)
-        read_num_seq_lineage_theory = np.multiply(cell_num_seq_lineage_theory, np.tile(self.ratio, (s_len, tau_len, 1)))
-        read_num_seq_lineage_theory[read_num_seq_lineage_theory < 1] = 1
+        n_theory = self.n_theory_array(s_array, tau_array)['cell_number'] #(s_len, tau_len, seq_num)
+        r_theory = np.multiply(n_theory, np.tile(self.ratio, (s_len, tau_len, 1)))
         
-        tmp_kappa_reverse = np.tile(1/self.kappa_seq, (s_len, tau_len, 1))
+        # modifies theoretical read number so that one can compare to modified data
+        r_theory[r_theory < 1] = 1
+        
+        kappa_inverse = np.tile(1/self.kappa_seq, (s_len, tau_len, 1))
 
-        tmp_theory = read_num_seq_lineage_theory
-        tmp_observed = np.tile(self.read_num_seq_lineage, (s_len, tau_len, 1))
-        tmp_observed_reverse = np.tile(1/self.read_num_seq_lineage, (s_len, tau_len, 1))
-        ive_ele = 2* np.multiply(np.sqrt(np.multiply(tmp_theory, tmp_observed)), tmp_kappa_reverse)
+        observed = np.tile(self.r_seq_lineage, (s_len, tau_len, 1))
+        observed_inverse = np.tile(1/self.r_seq_lineage, (s_len, tau_len, 1))
+        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, observed)), kappa_inverse)
  
-        tmp_part1 = np.log(tmp_kappa_reverse)
-        tmp_part2 = 1/2 * np.log(np.multiply(tmp_theory, tmp_observed_reverse))
-        tmp_part3 = -np.multiply(tmp_theory + tmp_observed, tmp_kappa_reverse)
-        tmp_part4 = np.log(special.ive(1, ive_ele)) + ive_ele
+        part2 = 1/2 * np.log(np.multiply(r_theory, observed_inverse))
+        part3 = -np.multiply(r_theory + observed, kappa_inverse)
+        part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
-        log_likelihood_seq_lineage = tmp_part1 + tmp_part2 + tmp_part3 + tmp_part4
+        log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
         log_likelihood_lineage = np.sum(log_likelihood_seq_lineage, axis=2)
 
         return log_likelihood_lineage
@@ -377,13 +370,17 @@ class FitMut:
         Output: log-likelihood value of all time poins (scalar)
         """
         mu_s_mean = self.mu_s_mean
-        f_s_tau_joint_log = np.log(self.Ub) - np.log(mu_s_mean) - s/mu_s_mean + np.log(s/self.noise_c * self.cell_num_seq_lineage[0])  #exponential (Mathematica)
-        #f_s_tau_joint_log =  np.log(self.Ub) + np.log(4*s/mu_s_mean**2) - 2*s/mu_s_mean + np.log(s * self.cell_num_seq_lineage[0])  #erlang prior:
-        #f_s_tau_joint_log =  np.log(self.Ub)  - np.log(2*mu_s_mean) + np.log(s * self.cell_num_seq_lineage[0])  #uniform prior
+        n0 = self.n_seq_lineage[0]
+        # weights the prior by lineage size and establishment probability
+
+        # exponential prior
+        f_s_tau_joint_log = np.log(self.Ub) - np.log(mu_s_mean) - s/mu_s_mean + np.log(s/self.noise_c * n0)
+        # erlang prior
+        # f_s_tau_joint_log =  np.log(self.Ub) + np.log(4*s/mu_s_mean**2) - 2*s/mu_s_mean + np.log(s*n0)
+        # uniform prior
+        # f_s_tau_joint_log =  np.log(self.Ub)  - np.log(2*mu_s_mean) + np.log(s*n0)
         
-        output = self.prior_loglikelihood_scalar(s, tau) + f_s_tau_joint_log
-        
-        return output
+        return self.loglikelihood_scalar(s, tau) + f_s_tau_joint_log
 
     
     
@@ -398,16 +395,17 @@ class FitMut:
         Output: log-likelihood value of all time points (array, 2D matrix)
         """
         tau_len = len(tau_array)
+        n0 = self.n_seq_lineage[0]
 
-        joint_tmp5 = np.tile(np.log(s_array/self.noise_c  * self.cell_num_seq_lineage[0]), (tau_len, 1))
-        joint_tmp6 = np.transpose(joint_tmp5, (1,0))
+        # weights the prior by lineage size and establishment probability
+        joint_dist_T = np.tile(np.log(s_array/self.noise_c  * n0), (tau_len, 1))
+        joint_dist = np.transpose(joint_dist_T, (1,0))
         if not fine:
-            f_s_tau_joint_log = self.f_s_tau_joint_log_part + joint_tmp6  #exponential prior distribution
+            f_s_tau_joint_log = self.f_s_tau_joint_log_part + joint_dist  # exponential prior distribution
         else:
-            f_s_tau_joint_log = self.f_s_tau_joint_log_part_fine + joint_tmp6
-        output = self.prior_loglikelihood_array(s_array, tau_array) + f_s_tau_joint_log
+            f_s_tau_joint_log = self.f_s_tau_joint_log_part_fine + joint_dist
 
-        return output
+        return self.loglikelihood_array(s_array, tau_array) + f_s_tau_joint_log
 
 
     ##########
@@ -418,37 +416,35 @@ class FitMut:
         Also returns the indices of s and tau in the input arrays which gave the highest probability
         """
         integrand_log = self.posterior_loglikelihood_array(s_array, tau_array)
-        amplify_factor_log = -np.max(integrand_log) + 2
-        amplify_integrand = np.exp(integrand_log + amplify_factor_log)
+        log_amp_factor = -np.max(integrand_log) + 2
+        amp_integrand = np.exp(integrand_log + log_amp_factor)
 
         s_idx,tau_idx = np.unravel_index(np.argmax(integrand_log),np.shape(integrand_log))
-        tmp2 = np.dot(np.dot(self.s_coefficient, amplify_integrand), self.tau_coefficient)
-        amplify_integral = tmp2 * self.s_stepsize * self.tau_stepsize / 9
-        output  = np.log(amplify_integral) - amplify_factor_log
-        return output,s_idx,tau_idx
+        integral_result = np.dot(np.dot(self.s_coeff, amp_integrand), self.tau_coeff)
+        amp_integral = integral_result * self.s_stepsize * self.tau_stepsize / 9
+        return np.log(amp_integral) - log_amp_factor,s_idx,tau_idx
 
     
 
     ##########
-    def function_posterior_loglikelihood_opt(self, x):
+    def posterior_loglikelihood_opt(self, x):
         """
         Calculate posterior log-likelihood value of a lineage given s and tau in optimization
         """
         s, tau = np.maximum(x[0], 1e-8), x[1]
-        output = self.posterior_loglikelihood_scalar(s, tau)
-        return -output #minimization only in python
+        return -self.posterior_loglikelihood_scalar(s, tau) #minimization only in python
 
     ##########
-    def function_parallel(self, i): 
+    def run_parallel(self, i): 
         """
         i: lineage label
         calculate probability first, then for adaptive lineage output optimized s and tau
         """
-        self.read_num_seq_lineage = self.read_num_seq[i, :]
-        self.cell_num_seq_lineage = self.cell_num_seq[i, :]
+        self.r_seq_lineage = self.r_seq[i, :]
+        self.n_seq_lineage = self.n_seq[i, :]
         
         p_ratio_log_adaptive,s_idx,tau_idx = self.log_ratio_adaptive_integral(self.s_bin, self.tau_bin)
-        p_ratio_log_neutral = self.prior_loglikelihood_scalar(0, 0)
+        p_ratio_log_neutral = self.loglikelihood_scalar(0, 0)
         
         p_ratio_log = p_ratio_log_adaptive - p_ratio_log_neutral
         if p_ratio_log <= 40:
@@ -465,21 +461,21 @@ class FitMut:
                 s_opt, tau_opt = self.s_bin_fine[s_idx1], self.tau_bin_fine[tau_idx1]
 
             elif self.opt_algorithm == 'differential_evolution':
-                opt_output = differential_evolution(func = self.function_posterior_loglikelihood_opt,
+                opt_output = differential_evolution(func = self.posterior_loglikelihood_opt,
                                                     seed = 1,
                                                     bounds = self.bounds,
                                                     x0 = [self.s_bin[s_idx],self.tau_bin[tau_idx]])
                 s_opt, tau_opt = opt_output.x[0], opt_output.x[1]
 
             elif self.opt_algorithm == 'nelder_mead': 
-                opt_output =self.function_neldermead(self.function_posterior_loglikelihood_opt, 
+                opt_output =self.nelder_mead(self.posterior_loglikelihood_opt, 
                                                      bounds = self.bounds,
                                                      thresh = 1e-13,
                                                      max_iter = 500,
                                                      x0 = [self.s_bin[s_idx],self.tau_bin[tau_idx]])
                 s_opt, tau_opt = opt_output[0], opt_output[1]
             #elif self.opt_algorithm == 'nelder_mead': 
-            #    opt_output = minimize(self.function_posterior_loglikelihood_opt, 
+            #    opt_output = minimize(self.posterior_loglikelihood_opt, 
             #                          x0=[self.s_bin[s_idx],self.tau_bin[tau_idx]],
             #                          method='Nelder-Mead',
             #                          bounds=self.bounds, 
@@ -495,7 +491,7 @@ class FitMut:
 
                         
     ##########
-    def function_bound_points(self, point, bounds):
+    def bound_points(self, point, bounds):
         """
         Projects point within bounds, subroutine for nelder_mead
         """
@@ -507,9 +503,7 @@ class FitMut:
 
     
     ##########
-    def function_neldermead(self, f_opt, 
-                                  bounds=[[-np.inf,np.inf],[-np.inf,np.inf]],
-                                  thresh=1e-8, max_iter=500,x0=None):
+    def nelder_mead(self, f_opt,bounds=[[-np.inf,np.inf],[-np.inf,np.inf]],thresh=1e-8, max_iter=500,x0=None):
         """
         Manually implements nelder mead algorithm with bounds as specified
         """
@@ -546,7 +540,7 @@ class FitMut:
             xr = centroid+alpha*(centroid-xh)
             fr = f_opt(xr)
             if fl<=fr<fs:
-                ws[2] = self.function_bound_points(xr,bounds)
+                ws[2] = self.bound_points(xr,bounds)
                 continue
 
             # expansion
@@ -554,10 +548,10 @@ class FitMut:
                 xe = centroid+gamma*(xr-centroid)
                 fe = f_opt(xe)
                 if fe<fr:
-                    ws[2] = self.function_bound_points(xe,bounds)
+                    ws[2] = self.bound_points(xe,bounds)
                     continue
                 else:
-                    ws[2] = self.function_bound_points(xr,bounds)
+                    ws[2] = self.bound_points(xr,bounds)
                     continue    
 
             # contraction
@@ -566,38 +560,38 @@ class FitMut:
                     xc = centroid+beta*(xr-centroid)
                     fc = f_opt(xc)
                     if fc<=fr:
-                        ws[2] = self.function_bound_points(xc,bounds)
+                        ws[2] = self.bound_points(xc,bounds)
                         continue
                 else:
                     xc = centroid+beta*(xh-centroid)
                     fc = f_opt(xc)
                     if fc<fh:
-                        ws[2] = self.function_bound_points(xc,bounds)
+                        ws[2] = self.bound_points(xc,bounds)
                         continue
             # shrink
-            ws[1] = self.function_bound_points(xl+delta*(ws[1]-xl),bounds)
-            ws[2] = self.function_bound_points(xl+delta*(ws[2]-xl),bounds)
+            ws[1] = self.bound_points(xl+delta*(ws[1]-xl),bounds)
+            ws[2] = self.bound_points(xl+delta*(ws[2]-xl),bounds)
             
         return np.mean(ws,axis=0)
 
     
     
     ##########
-    def function_estimation_error_lineage(self, s_opt, tau_opt):
+    def estimation_error_lineage(self, s_opt, tau_opt):
         """
         Estimate estimation error of a lineage for optimization
         """
         d_s, d_tau = 1e-8, 1e-5
     
-        f_zero = self.function_posterior_loglikelihood_opt([s_opt, tau_opt])
+        f_zero = self.posterior_loglikelihood_opt([s_opt, tau_opt])
         
-        f_plus_s = self.function_posterior_loglikelihood_opt([s_opt + d_s, tau_opt])
-        f_minus_s = self.function_posterior_loglikelihood_opt([s_opt - d_s, tau_opt])
+        f_plus_s = self.posterior_loglikelihood_opt([s_opt + d_s, tau_opt])
+        f_minus_s = self.posterior_loglikelihood_opt([s_opt - d_s, tau_opt])
     
-        f_plus_tau = self.function_posterior_loglikelihood_opt([s_opt, tau_opt + d_tau])
-        f_minus_tau = self.function_posterior_loglikelihood_opt([s_opt, tau_opt - d_tau])
+        f_plus_tau = self.posterior_loglikelihood_opt([s_opt, tau_opt + d_tau])
+        f_minus_tau = self.posterior_loglikelihood_opt([s_opt, tau_opt - d_tau])
     
-        f_plus_s_tau = self.function_posterior_loglikelihood_opt([s_opt + d_s, tau_opt + d_tau])
+        f_plus_s_tau = self.posterior_loglikelihood_opt([s_opt + d_s, tau_opt + d_tau])
     
         f_ss = (f_plus_s + f_minus_s - 2*f_zero)/d_s**2
         f_tt = (f_plus_tau + f_minus_tau - 2*f_zero)/d_tau**2
@@ -619,39 +613,38 @@ class FitMut:
 
     
     ##########
-    def function_estimation_error(self):
+    def estimation_error(self):
         for i in self.idx_adaptive_inferred_index:
-            self.read_num_seq_lineage = self.read_num_seq[i, :]
-            self.cell_num_seq_lineage = self.cell_num_seq[i, :]
+            self.r_seq_lineage = self.r_seq[i, :]
+            self.n_seq_lineage = self.n_seq[i, :]
                 
             s_opt = self.result_s[i]
             tau_opt = self.result_tau[i]
-            self.error_s[i], self.error_tau[i] = self.function_estimation_error_lineage(s_opt, tau_opt)
+            self.error_s[i], self.error_tau[i] = self.estimation_error_lineage(s_opt, tau_opt)
     
 
     ##########
-    def function_update_mean_fitness(self, k_iter):
+    def update_mean_fitness(self, k_iter):
         """
         Updated mean fitness & mutant fraction
         """
         self.mutant_fraction_numerator = np.zeros(self.seq_num, dtype=float)
-        self.x_mean_numerator = np.zeros(self.seq_num, dtype=float)
-        self.mutant_cell_num_seq_theory = np.zeros(np.shape(self.read_num_seq), dtype=float)
+        self.s_mean_numerator = np.zeros(self.seq_num, dtype=float)
+        self.mutant_n_seq_theory = np.zeros(np.shape(self.r_seq), dtype=float)
        
         for i in self.idx_adaptive_inferred_index:
-            self.read_num_seq_lineage = self.read_num_seq[i, :]
-            self.cell_num_seq_lineage = self.cell_num_seq[i, :]
-            output = self.function_cell_num_theory_scalar(self.result_s[i], self.result_tau[i])
-            self.mutant_cell_num_seq_theory[i,:] = output['mutant_cell_number']
-            self.x_mean_numerator += self.mutant_cell_num_seq_theory[i,:] * self.result_s[i]
-            self.mutant_fraction_numerator += self.mutant_cell_num_seq_theory[i,:]
+            self.r_seq_lineage = self.r_seq[i, :]
+            self.n_seq_lineage = self.n_seq[i, :]
+            self.mutant_n_seq_theory[i,:] = self.n_theory_scalar(self.result_s[i], self.result_tau[i])['mutant_cell_number']
+            self.s_mean_numerator += self.mutant_n_seq_theory[i,:] * self.result_s[i]
+            self.mutant_fraction_numerator += self.mutant_n_seq_theory[i,:]
         
-        self.x_mean_seq_dict[k_iter] = self.x_mean_numerator/self.cell_depth_seq
-        self.mutant_fraction_dict[k_iter] = self.mutant_fraction_numerator/self.cell_depth_seq
+        self.s_mean_seq_dict[k_iter] = self.s_mean_numerator/self.cell_depth_list
+        self.mutant_fraction_dict[k_iter] = self.mutant_fraction_numerator/self.cell_depth_list
 
     
     ##########
-    def function_run_iteration(self):
+    def run_iteration(self):
         """
         run a single interation
         """
@@ -659,9 +652,9 @@ class FitMut:
         # Then run optimization for adaptive lineages to find their optimized s & tau for adaptive lineages
         if self.parallelize:
             pool_obj = Pool() # might need to change processes=8
-            output_tmp = pool_obj.map(self.function_parallel, tqdm(range(self.lineages_num)))
+            output0 = pool_obj.map(self.run_parallel, tqdm(range(self.lineages_num)))
             pool_obj.close()
-            output = np.array(output_tmp)
+            output = np.array(output0)
             self.result_probability_adaptive = np.array(output[:,0])
             self.result_s = np.array(output[:,1])
             self.result_tau = np.array(output[:,2])
@@ -671,7 +664,7 @@ class FitMut:
             self.result_s = np.zeros(self.lineages_num, dtype=float)
             self.result_tau = np.zeros(self.lineages_num, dtype=float)
             for i in range(self.lineages_num):
-                output = self.function_parallel(i)
+                output = self.run_parallel(i)
                 self.result_probability_adaptive[i] = output[0]
                 self.result_s[i] = output[1]
                 self.result_tau[i] = output[2]
@@ -690,7 +683,7 @@ class FitMut:
 
     
     #####
-    def function_save_data(self, k_iter, output_label, output_cell_number):
+    def save_data(self, k_iter, output_label, output_cell_number):
         """
         Save data according to label: if it's saving a step or the final data
         """
@@ -699,65 +692,65 @@ class FitMut:
                          'Error_Fitness': self.error_s,
                          'Error_Establishment_Time': self.error_tau,
                          'Probability_Adaptive': self.result_probability_adaptive,
-                         'Mean_Fitness': self.x_mean_seq_dict[k_iter],
+                         'Mean_Fitness': self.s_mean_seq_dict[k_iter],
                          'Kappa_Value': self.kappa_seq,
                          'Mutant_Cell_Fraction': self.mutant_fraction_dict[k_iter],
                          'Inference_Time': self.iter_timing_list}
         
-        tmp = list(itertools.zip_longest(*list(result_output.values())))
+        to_write = list(itertools.zip_longest(*list(result_output.values())))
         with open(self.output_filename + output_label + '_MutSeq_Result.csv', 'w') as f:
             w = csv.writer(f)
             w.writerow(result_output.keys())
-            w.writerows(tmp)
+            w.writerows(to_write)
         
-        tmp = list(itertools.zip_longest(*list(self.x_mean_seq_dict.values())))
+        to_write = list(itertools.zip_longest(*list(self.s_mean_seq_dict.values())))
         with open(self.output_filename + output_label + '_Mean_fitness_Result.csv', 'w') as f:
             w = csv.writer(f)
-            w.writerow(self.x_mean_seq_dict.keys())
-            w.writerows(tmp)
+            w.writerow(self.s_mean_seq_dict.keys())
+            w.writerows(to_write)
             
         if output_cell_number == True:
-            tmp = pd.DataFrame(self.mutant_cell_num_seq_theory.astype(int))
-            tmp.to_csv(self.output_filename + output_label + '_Cell_Number_Mutant_Estimated.csv',
+            to_write = pd.DataFrame(self.mutant_n_seq_theory.astype(int))
+            to_write.to_csv(self.output_filename + output_label + '_Cell_Number_Mutant_Estimated.csv',
                        index=False, header=False)
 
-            tmp = pd.DataFrame(self.cell_num_seq.astype(int))
-            tmp.to_csv(self.output_filename + output_label + '_Cell_Number.csv',
+            to_write = pd.DataFrame(self.n_seq.astype(int))
+            to_write.to_csv(self.output_filename + output_label + '_Cell_Number.csv',
                        index=False, header=False)
    
 
 
     #####
-    def function_main(self):
+    def main(self):
         """
         main function
         """
         start = time.time()
         self.calculate_error = False
         
-        self.function_kappa()
+        self.calculate_kappa()
 
         for k_iter in range(1, self.max_iter_num+1):
             start_iter = time.time()
             print(f'--- iteration {k_iter} ...')
                
             if k_iter == 1:
-                self.x_mean_seq = np.zeros(self.seq_num, dtype=float)
+                self.s_mean_seq = np.zeros(self.seq_num, dtype=float)
             else:
-                self.x_mean_seq = self.x_mean_seq_dict[k_iter-1]
+                self.s_mean_seq = self.s_mean_seq_dict[k_iter-1]
             
         
-            self.function_sum_term()
-            self.function_run_iteration()
-            self.function_update_mean_fitness(k_iter)
+            self.calculate_E()
+            self.run_iteration()
+            self.update_mean_fitness(k_iter)
 
             if self.save_steps == True:
                 output_label = '_intermediate_s_' + str(k_iter)
                 output_cell_number = False
-                self.function_save_data(k_iter, output_label, output_cell_number)      
+                self.save_data(k_iter, output_label, output_cell_number)      
                     
             if k_iter > 1:
-               stop_check = np.sum((self.x_mean_seq_dict[k_iter] - self.x_mean_seq_dict[k_iter-1])**2)
+               stop_check = np.sum((self.s_mean_seq_dict[k_iter] - self.s_mean_seq_dict[k_iter-1])**2)
                print(stop_check)
                if stop_check < self.iteration_stop_threhold:
                    break
@@ -769,8 +762,8 @@ class FitMut:
         
         output_label = ''
         output_cell_number = True
-        self.function_estimation_error()
-        self.function_save_data(k_iter, output_label, output_cell_number)
+        self.estimation_error()
+        self.save_data(k_iter, output_label, output_cell_number)
         
         end = time.time()
         inference_timing = np.round(end - start, 5)

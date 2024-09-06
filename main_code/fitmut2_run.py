@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(description='Estimate fitness and establishment
 parser.add_argument('-i', '--input', type=str, required=True,
                     help='a .csv file: with each column being the read number per barcode at each sequenced time-point')
 
-parser.add_argument('-t', '--t_seq', type=str, required=True,
+parser.add_argument('-t', '--t_list', type=str, required=True,
                     help='a .csv file of 2 columns:'
                          '1st column: sequenced time-points evaluated in number of generations, '
                          '2nd column: total effective number of cells of the population for each sequenced time-point.')
@@ -51,12 +51,13 @@ parser.add_argument('-o', '--output_filename', type=str, default='output',
 args = parser.parse_args()
 
 
-#####
-read_num_seq = np.array(pd.read_csv(args.input, header=None), dtype=float)
+##################################################
+# read number counts
+r_seq = np.array(pd.read_csv(args.input, header=None), dtype=float)
 
-csv_input = pd.read_csv(args.t_seq, header=None)
-t_seq = np.array(csv_input[0][~pd.isnull(csv_input[0])], dtype=float)
-cell_depth_seq = np.array(csv_input[1][~pd.isnull(csv_input[1])], dtype=float)
+csv_input = pd.read_csv(args.t_list, header=None)
+t_list = np.array(csv_input[0][~pd.isnull(csv_input[0])], dtype=float)
+cell_depth_list = np.array(csv_input[1][~pd.isnull(csv_input[1])], dtype=float)
 
 Ub = args.mutation_rate
 delta_t = args.delta_t
@@ -67,9 +68,9 @@ opt_algorithm = args.opt_algorithm
 output_filename = args.output_filename
 save_steps = bool(int(args.save_steps))
 
-my_obj = fitmut2_methods.FitMut(read_num_seq = read_num_seq,
-                                   t_seq = t_seq,
-                                   cell_depth_seq = cell_depth_seq,
+my_obj = fitmut2_methods.FitMut(r_seq = r_seq,
+                                   t_list = t_list,
+                                   cell_depth_list = cell_depth_list,
                                    Ub = Ub,
                                    delta_t = delta_t,
                                    c = c,
@@ -79,5 +80,5 @@ my_obj = fitmut2_methods.FitMut(read_num_seq = read_num_seq,
                                    save_steps = save_steps,
                                    output_filename = output_filename)
 
-my_obj.function_main()
+my_obj.main()
 
