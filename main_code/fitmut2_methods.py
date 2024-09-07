@@ -37,8 +37,10 @@ class FitMut:
         self.ratio = np.true_divide(self.read_depth_seq, self.cell_depth_list)
         self.n_seq = self.r_seq / self.ratio
 
-        # eliminates zeros from data for later convenience -- also have to modify theory
+        # eliminates zeros from data for later convenience -- also have to modify theoretical model
         # in order to not classify neutrals as adaptive
+        # It should be possible to modify this ad hoc choice since we can treat the r_theory=0 case
+        # of the bessel function separately when calculating log likelihood of a trajectory.
         self.n_seq[self.n_seq < 1] = 1 
         self.r_seq[self.r_seq < 1] = 1
 
@@ -221,10 +223,10 @@ class FitMut:
         Output: {'cell_number': (array, vector), 
                  'mutant_cell_number': (array, vector)}
         """            
-        n_observed = self.n_seq_lineage
+        n_obs = self.n_seq_lineage
         
         n_theory = np.zeros(self.seq_num, dtype=float)
-        n_theory[0] = n_observed[0]
+        n_theory[0] = n_obs[0]
         mutant_n_theory = np.zeros(self.seq_num, dtype=float)
         unmutant_n_theory = np.zeros(self.seq_num, dtype=float)
         
@@ -236,9 +238,9 @@ class FitMut:
             mutant1 = np.exp(s * (self.t_list[k] - tau))
             mutant2 = np.multiply(established_size, mutant1)
             mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
-            mutant_n_theory[k] = np.minimum(mutant3, n_observed[k])
+            mutant_n_theory[k] = np.minimum(mutant3, n_obs[k])
             
-            unmutant_n_theory[k] = n_observed[k] - mutant_n_theory[k]
+            unmutant_n_theory[k] = n_obs[k] - mutant_n_theory[k]
 
             if k > 0:
                 E_tk_minus_tkminus1 = self.E_t_list[k-1]
@@ -266,10 +268,10 @@ class FitMut:
         s_matrix = np.transpose(np.tile(s_array, (tau_len, 1)), (1,0))
         tau_matrix  = np.tile(tau_array, (s_len, 1))
             
-        n_observed = np.tile(self.n_seq_lineage, (s_len, tau_len, 1))
+        n_obs = np.tile(self.n_seq_lineage, (s_len, tau_len, 1))
         
         n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
-        n_theory[:,:,0] = n_observed[:,:,0]
+        n_theory[:,:,0] = n_obs[:,:,0]
         mutant_n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
         unmutant_n_theory = np.zeros((s_len, tau_len, self.seq_num), dtype=float)
             
@@ -282,9 +284,9 @@ class FitMut:
             mutant1 = np.exp(s_matrix * (self.t_list[k] - tau_matrix))
             mutant2 = np.multiply(established_size, mutant1)
             mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
-            mutant_n_theory[:,:,k] = np.minimum(mutant3, n_observed[:,:,k])
+            mutant_n_theory[:,:,k] = np.minimum(mutant3, n_obs[:,:,k])
             
-            unmutant_n_theory[:,:,k] = n_observed[:,:,k] - mutant_n_theory[:,:,k]
+            unmutant_n_theory[:,:,k] = n_obs[:,:,k] - mutant_n_theory[:,:,k]
                 
             if k > 0:
                 E_tk_minus_tkminus1 = self.E_t_list[k-1]
@@ -308,17 +310,17 @@ class FitMut:
         n_theory = self.n_theory_scalar(s, tau)['cell_number']
         r_theory = np.multiply(n_theory, self.ratio)
 
-        # modifies theoretical read number so that one can compare to modified data
+        # modifies theoretical read number so that one can compare to modified data without zeros
         r_theory[r_theory < 1] = 1
         
         kappa_inverse = 1/self.kappa_seq
 
-        observed = self.r_seq_lineage
-        observed_inverse = 1/observed
-        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, observed)), kappa_inverse)
+        r_obs = self.r_seq_lineage # observed read count
+        r_obs_inverse = 1/r_obs
+        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, r_obs)), kappa_inverse)
  
-        part2 = 1/2 * np.log(np.multiply(r_theory, observed_inverse))
-        part3 = -np.multiply(r_theory + observed, kappa_inverse)
+        part2 = 1/2 * np.log(np.multiply(r_theory, r_obs_inverse))
+        part3 = -np.multiply(r_theory + r_obs, kappa_inverse)
         part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
         log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
@@ -341,17 +343,17 @@ class FitMut:
         n_theory = self.n_theory_array(s_array, tau_array)['cell_number'] #(s_len, tau_len, seq_num)
         r_theory = np.multiply(n_theory, np.tile(self.ratio, (s_len, tau_len, 1)))
         
-        # modifies theoretical read number so that one can compare to modified data
+        # modifies theoretical read number so that one can compare to modified data without zeros
         r_theory[r_theory < 1] = 1
         
         kappa_inverse = np.tile(1/self.kappa_seq, (s_len, tau_len, 1))
 
-        observed = np.tile(self.r_seq_lineage, (s_len, tau_len, 1))
-        observed_inverse = np.tile(1/self.r_seq_lineage, (s_len, tau_len, 1))
-        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, observed)), kappa_inverse)
+        r_obs = np.tile(self.r_seq_lineage, (s_len, tau_len, 1))
+        r_obs_inverse = np.tile(1/self.r_seq_lineage, (s_len, tau_len, 1))
+        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, r_obs)), kappa_inverse)
  
-        part2 = 1/2 * np.log(np.multiply(r_theory, observed_inverse))
-        part3 = -np.multiply(r_theory + observed, kappa_inverse)
+        part2 = 1/2 * np.log(np.multiply(r_theory, r_obs_inverse))
+        part3 = -np.multiply(r_theory + r_obs, kappa_inverse)
         part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
         log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
