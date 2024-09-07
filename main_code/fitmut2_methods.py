@@ -34,7 +34,7 @@ class FitMut:
         self.t_list = t_list
         self.seq_num = len(self.t_list)
         self.cell_depth_list = cell_depth_list
-        self.ratio = np.true_divide(self.read_depth_seq, self.cell_depth_list)
+        self.ratio = self.read_depth_seq/self.cell_depth_list
         self.n_seq = self.r_seq / self.ratio
 
         # eliminates zeros from data for later convenience -- also have to modify theoretical model
@@ -234,10 +234,10 @@ class FitMut:
         E_extend_tau = np.interp(tau, self.t_list_extend, self.E_extend)
         
         for k in range(self.seq_num):
-            E_tk_minus_tau = np.divide(self.E_extend_t_list[k], E_extend_tau)
+            E_tk_minus_tau = self.E_extend_t_list[k]/E_extend_tau
             mutant1 = np.exp(s * (self.t_list[k] - tau))
-            mutant2 = np.multiply(established_size, mutant1)
-            mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
+            mutant2 = established_size*mutant1
+            mutant3 = mutant2*E_tk_minus_tau                      
             mutant_n_theory[k] = np.minimum(mutant3, n_obs[k])
             
             unmutant_n_theory[k] = n_obs[k] - mutant_n_theory[k]
@@ -246,7 +246,7 @@ class FitMut:
                 E_tk_minus_tkminus1 = self.E_t_list[k-1]
                 #E_tk_minus_tkminus1 = self.E_extend_t_list[k] / self.E_extend_t_list[k-1]
                 growth_fac = np.exp(s* (self.t_list[k] - self.t_list[k-1]))
-                lineage_size0 = unmutant_n_theory[k-1] + np.multiply(mutant_n_theory[k-1], growth_fac)
+                lineage_size0 = unmutant_n_theory[k-1] + mutant_n_theory[k-1]*growth_fac
                 n_theory[k] = lineage_size0 * E_tk_minus_tkminus1
             
         return {'cell_number': n_theory,'mutant_cell_number': mutant_n_theory}
@@ -280,10 +280,10 @@ class FitMut:
         E_extend_tau = np.tile(np.interp(tau_array, self.t_list_extend, self.E_extend), (s_len, 1)) #(s_len, tau_len)
         
         for k in range(self.seq_num):
-            E_tk_minus_tau = np.divide(self.E_extend_t_list[k], E_extend_tau)
+            E_tk_minus_tau = self.E_extend_t_list[k]/E_extend_tau
             mutant1 = np.exp(s_matrix * (self.t_list[k] - tau_matrix))
-            mutant2 = np.multiply(established_size, mutant1)
-            mutant3 = np.multiply(mutant2, E_tk_minus_tau)                      
+            mutant2 = established_size*mutant1
+            mutant3 = mutant2*E_tk_minus_tau                     
             mutant_n_theory[:,:,k] = np.minimum(mutant3, n_obs[:,:,k])
             
             unmutant_n_theory[:,:,k] = n_obs[:,:,k] - mutant_n_theory[:,:,k]
@@ -292,7 +292,7 @@ class FitMut:
                 E_tk_minus_tkminus1 = self.E_t_list[k-1]
                 #E_tk_minus_tkminus1 = self.E_extend_t_list[k] / self.E_extend_t_list[k-1]
                 growth_fac = np.exp(s_matrix * (self.t_list[k] - self.t_list[k-1]))
-                lineage_size0 = unmutant_n_theory[:,:,k-1] + np.multiply(mutant_n_theory[:,:,k-1], growth_fac)
+                lineage_size0 = unmutant_n_theory[:,:,k-1] + mutant_n_theory[:,:,k-1]*growth_fac
                 n_theory[:,:,k] = lineage_size0 * E_tk_minus_tkminus1
     
         return {'cell_number': n_theory,'mutant_cell_number': mutant_n_theory}
@@ -308,7 +308,7 @@ class FitMut:
         Output: log-likelihood value of all time points (scalar)
         """        
         n_theory = self.n_theory_scalar(s, tau)['cell_number']
-        r_theory = np.multiply(n_theory, self.ratio)
+        r_theory = n_theory*self.ratio
 
         # modifies theoretical read number so that one can compare to modified data without zeros
         r_theory[r_theory < 1] = 1
@@ -316,11 +316,10 @@ class FitMut:
         kappa_inverse = 1/self.kappa_seq
 
         r_obs = self.r_seq_lineage # observed read count
-        r_obs_inverse = 1/r_obs
-        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, r_obs)), kappa_inverse)
+        ive_arg = 2*np.sqrt(r_theory*r_obs)*kappa_inverse
  
-        part2 = 1/2 * np.log(np.multiply(r_theory, r_obs_inverse))
-        part3 = -np.multiply(r_theory + r_obs, kappa_inverse)
+        part2 = 1/2 * np.log(r_theory/r_obs)
+        part3 = -(r_theory + r_obs)*kappa_inverse
         part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
         log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
@@ -341,7 +340,7 @@ class FitMut:
         tau_len = len(tau_array)
 
         n_theory = self.n_theory_array(s_array, tau_array)['cell_number'] #(s_len, tau_len, seq_num)
-        r_theory = np.multiply(n_theory, np.tile(self.ratio, (s_len, tau_len, 1)))
+        r_theory = n_theory*np.tile(self.ratio, (s_len, tau_len, 1))
         
         # modifies theoretical read number so that one can compare to modified data without zeros
         r_theory[r_theory < 1] = 1
@@ -350,10 +349,10 @@ class FitMut:
 
         r_obs = np.tile(self.r_seq_lineage, (s_len, tau_len, 1))
         r_obs_inverse = np.tile(1/self.r_seq_lineage, (s_len, tau_len, 1))
-        ive_arg = 2* np.multiply(np.sqrt(np.multiply(r_theory, r_obs)), kappa_inverse)
+        ive_arg = 2*np.sqrt(r_theory*r_obs)*kappa_inverse
  
-        part2 = 1/2 * np.log(np.multiply(r_theory, r_obs_inverse))
-        part3 = -np.multiply(r_theory + r_obs, kappa_inverse)
+        part2 = 1/2 * np.log(r_theory*r_obs_inverse)
+        part3 = -(r_theory + r_obs)*kappa_inverse
         part4 = np.log(special.ive(1, ive_arg)) + ive_arg
 
         log_likelihood_seq_lineage = np.log(kappa_inverse) + part2 + part3 + part4
